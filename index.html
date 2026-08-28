@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>源泉徴収計算機</title>
+  <style>
+    :root {
+      --bg: #EDE1DC;
+      --surface: #FFFFFF;
+      --text: #382E2B;
+      --muted: #7A6963;
+      --accent: #9C4A38;
+      --danger: #D93025;
+      --border: #E3D3CC;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-width: 320px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(100%, 560px);
+      margin: 0 auto;
+      padding: 24px 16px;
+    }
+
+    .app-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 24px 16px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.4;
+    }
+
+    .lead {
+      margin: 8px 0 24px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .mode-switch {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 24px;
+    }
+
+    button {
+      min-height: 44px;
+      padding: 8px 16px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--accent);
+      font: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button[aria-pressed="true"] {
+      background: var(--accent);
+      color: var(--surface);
+    }
+
+    .field-label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type="number"] {
+      width: auto;
+      flex: 1 1 0;
+      min-height: 48px;
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      font-size: 16px;
+    }
+
+    input[type="number"]:focus {
+      outline: 3px solid rgba(156, 74, 56, .22);
+      outline-offset: 1px;
+      border-color: var(--accent);
+    }
+
+    .yen {
+      color: var(--muted);
+      font-size: 16px;
+      white-space: nowrap;
+    }
+
+    .error {
+      min-height: 24px;
+      margin: 8px 0 16px;
+      color: var(--danger);
+      font-size: 14px;
+    }
+
+    .error:empty { margin-bottom: 16px; }
+
+    .results {
+      display: grid;
+      gap: 8px;
+    }
+
+    .result-card {
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+    }
+
+    .result-label {
+      display: block;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    output {
+      display: block;
+      overflow-wrap: anywhere;
+      color: var(--accent);
+      font-size: 20px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .breakdown {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .note {
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="app-card" aria-labelledby="page-title">
+      <header>
+        <h1 id="page-title">源泉徴収計算機</h1>
+        <p class="lead">請求額を入れると、源泉徴収税額と手取り額がすぐわかります</p>
+      </header>
+
+      <div class="mode-switch" aria-label="計算モード">
+        <button type="button" id="invoice-mode" aria-pressed="true">請求額から計算</button>
+        <button type="button" id="takehome-mode" aria-pressed="false">手取りから逆算</button>
+      </div>
+
+      <form novalidate>
+        <label class="field-label" id="amount-label" for="amount">請求額</label>
+        <div class="input-wrap">
+          <input id="amount" type="number" inputmode="numeric" min="1" step="1" placeholder="例：100000" aria-describedby="input-error">
+          <span class="yen" aria-hidden="true">円</span>
+        </div>
+        <p class="error" id="input-error" aria-live="polite"></p>
+      </form>
+
+      <section class="results" aria-live="polite" aria-label="計算結果">
+        <div class="result-card">
+          <span class="result-label" id="tax-label">源泉徴収税額</span>
+          <output id="tax-result">—</output>
+          <p class="breakdown" id="breakdown">請求額を入力してください</p>
+        </div>
+        <div class="result-card">
+          <span class="result-label" id="net-label">差引支払額（手取り額）</span>
+          <output id="net-result">—</output>
+        </div>
+      </section>
+
+      <p class="note">2026年8月時点の税率（10.21%・100万円超部分は20.42%）です。</p>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const threshold = 1000000;
+      const lowerRate = 0.1021;
+      const upperRate = 0.2042;
+      const amountInput = document.querySelector('#amount');
+      const amountLabel = document.querySelector('#amount-label');
+      const error = document.querySelector('#input-error');
+      const invoiceButton = document.querySelector('#invoice-mode');
+      const takehomeButton = document.querySelector('#takehome-mode');
+      const taxLabel = document.querySelector('#tax-label');
+      const netLabel = document.querySelector('#net-label');
+      const taxResult = document.querySelector('#tax-result');
+      const netResult = document.querySelector('#net-result');
+      const breakdown = document.querySelector('#breakdown');
+      let mode = 'invoice';
+
+      const yen = value => `${Math.round(value).toLocaleString('ja-JP')}円`;
+      const withholdingTax = invoice => invoice <= threshold
+        ? invoice * lowerRate
+        : threshold * lowerRate + (invoice - threshold) * upperRate;
+      const invoiceFromTakehome = takehome => {
+        const lowerLimit = threshold * (1 - lowerRate);
+        return takehome <= lowerLimit
+          ? takehome / (1 - lowerRate)
+          : threshold + (takehome - lowerLimit) / (1 - upperRate);
+      };
+
+      function clearResults() {
+        taxResult.textContent = '—';
+        netResult.textContent = '—';
+        breakdown.textContent = mode === 'invoice' ? '請求額を入力してください' : '希望する手取り額を入力してください';
+      }
+
+      function calculate() {
+        const inputValue = amountInput.value;
+        const amount = Number(inputValue);
+        if (!inputValue || !Number.isFinite(amount) || amount <= 0) {
+          error.textContent = inputValue ? '1円以上の金額を入力してください。' : '金額を入力してください。';
+          clearResults();
+          return;
+        }
+        error.textContent = '';
+        const invoice = mode === 'invoice' ? amount : invoiceFromTakehome(amount);
+        const tax = withholdingTax(invoice);
+        const net = invoice - tax;
+        taxResult.textContent = yen(tax);
+        netResult.textContent = yen(mode === 'invoice' ? net : invoice);
+        breakdown.textContent = invoice > threshold
+          ? `請求額 ${yen(invoice)}（100万円まで10.21%、超過分20.42%）`
+          : `請求額 ${yen(invoice)}（税率10.21%）`;
+      }
+
+      function setMode(nextMode) {
+        mode = nextMode;
+        const isInvoice = mode === 'invoice';
+        invoiceButton.setAttribute('aria-pressed', String(isInvoice));
+        takehomeButton.setAttribute('aria-pressed', String(!isInvoice));
+        amountLabel.textContent = isInvoice ? '請求額' : '希望する手取り額';
+        amountInput.placeholder = isInvoice ? '例：100000' : '例：897900';
+        taxLabel.textContent = isInvoice ? '源泉徴収税額' : '源泉徴収税額（逆算結果）';
+        netLabel.textContent = isInvoice ? '差引支払額（手取り額）' : '必要な請求額';
+        calculate();
+      }
+
+      amountInput.addEventListener('input', calculate);
+      invoiceButton.addEventListener('click', () => setMode('invoice'));
+      takehomeButton.addEventListener('click', () => setMode('takehome'));
+    })();
+  </script>
+</body>
+</html>
